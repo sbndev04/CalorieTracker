@@ -18,7 +18,7 @@ button{cursor:pointer}
 .topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:18px}
 h1{font-size:24px;font-weight:700;letter-spacing:0;color:var(--text)}
 .profile-pill{font-size:13px;color:var(--soft);background:var(--chip);border:1px solid var(--line);border-radius:999px;padding:7px 12px;white-space:nowrap}
-.tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px}
+.tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px}
 .tab{border:0;border-radius:6px;background:transparent;color:var(--muted);padding:10px 8px;font-weight:650}
 .tab.active{background:var(--accent);color:#05100d}
 .section{display:none}.section.active{display:block}
@@ -89,6 +89,13 @@ input:disabled{opacity:.55;cursor:not-allowed}
 .day-kcal{font-size:11px;color:var(--accent);line-height:1.25}.day-kcal.over{color:var(--bad)}.day-kcal.none{color:#52636d}
 .week-col{display:flex;align-items:center;justify-content:center;text-align:center}
 .week-total{font-size:11px;color:var(--accent-2);line-height:1.35}.week-total.over{color:var(--bad)}
+.habit-card{text-align:center;padding:24px}
+.habit-icon{width:54px;height:54px;margin:0 auto 12px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(109,213,140,.12);border:1px solid rgba(109,213,140,.35);color:var(--good);font-size:26px;font-weight:800}
+.habit-button{width:100%;max-width:420px;margin:18px auto 10px;min-height:52px;font-size:15px}
+.habit-button.done{background:var(--good);border-color:var(--good);color:#07140b;cursor:default}
+.habit-feedback{min-height:20px;color:var(--muted);font-size:13px}.habit-feedback.done{color:var(--good);font-weight:700}
+.habit-mark{font-size:10px;line-height:1.3;color:var(--good);font-weight:750;margin-top:4px}
+.cell.habit-done{border-color:rgba(109,213,140,.55);background:rgba(109,213,140,.06)}
 .summary-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px}
 .no-profile{text-align:center;color:var(--muted);padding:34px 12px;background:var(--panel);border:1px solid var(--line);border-radius:8px}
 @media(max-width:780px){
@@ -110,6 +117,7 @@ input:disabled{opacity:.55;cursor:not-allowed}
   <div class="tabs">
     <button class="tab active" onclick="showTab('perfil')">Perfil</button>
     <button class="tab" onclick="showTab('registro')">Registro</button>
+    <button class="tab" onclick="showTab('habito')">H&aacute;bito</button>
     <button class="tab" onclick="showTab('calendario')">Calendario</button>
   </div>
 
@@ -241,6 +249,25 @@ input:disabled{opacity:.55;cursor:not-allowed}
     </div>
   </div>
 
+  <div id="habito" class="section">
+    <div id="habit-noprofile" class="no-profile" style="display:none">Selecciona o crea un perfil primero.</div>
+    <div id="habit-content">
+      <div class="summary-grid">
+        <div class="stat good"><div class="label">Estado de hoy</div><div class="value" id="habit-today-status">Pendiente</div></div>
+        <div class="stat"><div class="label">Racha actual</div><div class="value" id="habit-streak">0</div></div>
+        <div class="stat"><div class="label">Este mes</div><div class="value" id="habit-month-total">0</div></div>
+        <div class="stat"><div class="label">Total</div><div class="value" id="habit-total">0</div></div>
+      </div>
+      <div class="card habit-card">
+        <div class="habit-icon">&#10003;</div>
+        <h2>Creatina diaria</h2>
+        <p class="subtle">Marca el h&aacute;bito cuando hayas tomado tu creatina. Solo se puede completar una vez al d&iacute;a.</p>
+        <button class="btn primary habit-button" id="habit-button" onclick="completeHabit()">He tomado la creatina</button>
+        <div class="habit-feedback" id="habit-feedback">Pendiente para hoy.</div>
+      </div>
+    </div>
+  </div>
+
   <div id="calendario" class="section">
     <div id="cal-noprofile" class="no-profile" style="display:none">Selecciona o crea un perfil primero.</div>
     <div id="cal-content">
@@ -304,6 +331,7 @@ function normalizeStore(store){
     p.name=p.name||'Perfil';
     p.calData=p.calData||{};
     p.recipes=p.recipes||[];
+    p.habitData=p.habitData&&typeof p.habitData==='object'?p.habitData:{};
     Object.keys(p.calData).forEach(k=>{
       const v=p.calData[k];
       if(typeof v==='number'){
@@ -365,7 +393,7 @@ function createProfile(){
   const name=document.getElementById('new-profile-name').value.trim();
   if(!name){showMsg('Escribe un nombre para el perfil.');return;}
   const store=loadStore(), id=uid('p');
-  store.profiles[id]={name,data:null,calData:{},recipes:[]}; saveStore(store);
+  store.profiles[id]={name,data:null,calData:{},recipes:[],habitData:{}}; saveStore(store);
   document.getElementById('new-profile-name').value=''; selectProfile(id); showMsg('Perfil creado.','ok');
 }
 function deleteProfile(e,id){
@@ -519,6 +547,48 @@ function renderRecipes(){
   el.innerHTML=recipes.map(r=>`<div class="recipe-item"><div><div class="recipe-title">${esc(r.name)}</div><div class="recipe-meta">${r.kcal} kcal / ${r.serving} ${esc(r.unit)} | P ${round(r.protein)}g / C ${round(r.carbs)}g / G ${round(r.fat)}g</div></div><div class="actions"><button class="btn small primary" onclick="useRecipe('${r.id}')">Usar</button><button class="btn small" onclick="editRecipe('${r.id}')">Editar</button><button class="btn danger small" onclick="deleteRecipe('${r.id}')">x</button></div></div>`).join('');
 }
 
+function isHabitDone(key=todayKey()){
+  const p=getActiveProfile();
+  return !!(p&&p.habitData&&p.habitData[key]);
+}
+function habitStreak(){
+  if(!activeProfileId)return 0;
+  let streak=0, d=new Date();
+  while(isHabitDone(dateKey(d))){
+    streak++;
+    d.setDate(d.getDate()-1);
+    if(streak>3650)break;
+  }
+  return streak;
+}
+function completeHabit(){
+  if(!activeProfileId||isHabitDone())return;
+  const store=loadStore();
+  store.profiles[activeProfileId].habitData[todayKey()]=true;
+  saveStore(store);
+  renderHabit();
+  renderCal();
+  showMsg('Creatina registrada para hoy.','ok');
+}
+function renderHabit(){
+  const has=!!activeProfileId;
+  document.getElementById('habit-noprofile').style.display=has?'none':'block';
+  document.getElementById('habit-content').style.display=has?'block':'none';
+  if(!has)return;
+  const p=getActiveProfile(), done=isHabitDone(), button=document.getElementById('habit-button');
+  const monthPrefix=todayKey().slice(0,7);
+  const completedDays=Object.keys(p.habitData||{}).filter(k=>p.habitData[k]);
+  button.disabled=done;
+  button.classList.toggle('done',done);
+  button.textContent=done?'Creatina tomada hoy':'He tomado la creatina';
+  document.getElementById('habit-feedback').textContent=done?'Completado. Buen trabajo.':'Pendiente para hoy.';
+  document.getElementById('habit-feedback').classList.toggle('done',done);
+  document.getElementById('habit-today-status').textContent=done?'Completado':'Pendiente';
+  document.getElementById('habit-streak').textContent=habitStreak();
+  document.getElementById('habit-month-total').textContent=completedDays.filter(k=>k.startsWith(monthPrefix)).length;
+  document.getElementById('habit-total').textContent=completedDays.length;
+}
+
 function changeMonth(d){curMonth+=d;if(curMonth>11){curMonth=0;curYear++;}if(curMonth<0){curMonth=11;curYear--;}renderCal();}
 function weekRange(date){
   const d=new Date(date); const day=d.getDay()||7; d.setDate(d.getDate()-day+1); const start=new Date(d); d.setDate(d.getDate()+6); return [start,d];
@@ -547,9 +617,10 @@ function renderCal(){
   for(let i=0;i<offset;i++){html+='<div class="cell empty"></div>';col++;}
   while(day<=daysInMonth){
     if(col===7){const over=weekGoal&&weekSum>weekGoal;html+=`<div class="week-col"><div class="week-total${over?' over':''}">${Math.round(weekSum)}${goal?'/'+weekGoal:''}<br>kcal sem.</div></div>`;weekSum=0;col=0;}
-    const key=`${curYear}-${String(curMonth+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`, totals=dayTotals(key), consumed=totals.kcal, isToday=isThisMonth&&day===today.getDate(), over=goal&&consumed>goal;
+    const key=`${curYear}-${String(curMonth+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`, totals=dayTotals(key), consumed=totals.kcal, isToday=isThisMonth&&day===today.getDate(), over=goal&&consumed>goal, habitDone=isHabitDone(key);
     const kcalStr=consumed>0?`<div class="day-kcal${over?' over':''}">${Math.round(consumed)}${goal?'/'+goal:''}</div><div class="day-kcal none">P${round(totals.protein)} C${round(totals.carbs)} G${round(totals.fat)}</div>`:'<div class="day-kcal none">-</div>';
-    html+=`<div class="cell${isToday?' today':''}"><div class="day-num">${day}</div>${kcalStr}</div>`;
+    const habitStr=habitDone?'<div class="habit-mark">&#10003; Creatina</div>':'';
+    html+=`<div class="cell${isToday?' today':''}${habitDone?' habit-done':''}"><div class="day-num">${day}</div>${kcalStr}${habitStr}</div>`;
     weekSum+=consumed;col++;day++;
   }
   const remaining=7-col; for(let i=0;i<remaining;i++)html+='<div class="cell empty"></div>';
@@ -557,11 +628,11 @@ function renderCal(){
   document.getElementById('cal-container').innerHTML=html;
 }
 function showTab(t){
-  document.querySelectorAll('.tab').forEach((b,i)=>b.classList.toggle('active',['perfil','registro','calendario'][i]===t));
+  document.querySelectorAll('.tab').forEach((b,i)=>b.classList.toggle('active',['perfil','registro','habito','calendario'][i]===t));
   document.querySelectorAll('.section').forEach(s=>s.classList.remove('active')); document.getElementById(t).classList.add('active');
-  if(t==='registro'){updateRegistro();renderHistory();renderRecipes();} if(t==='calendario')renderCal();
+  if(t==='registro'){updateRegistro();renderHistory();renderRecipes();} if(t==='habito')renderHabit(); if(t==='calendario')renderCal();
 }
-function renderAll(){renderProfileList();updateRegistro();renderHistory();renderRecipes();renderCal();}
+function renderAll(){renderProfileList();updateRegistro();renderHistory();renderRecipes();renderHabit();renderCal();}
 document.addEventListener('click',e=>{if(!e.target.closest('.input-wrap'))document.getElementById('ac-list').style.display='none';});
 
 (function init(){

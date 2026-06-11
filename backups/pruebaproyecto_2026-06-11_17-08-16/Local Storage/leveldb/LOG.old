@@ -1,0 +1,9 @@
+2026/06/11-09:40:56.615 8bb0 Reusing MANIFEST C:\Users\sabin\AppData\Roaming\pruebaproyecto\Local Storage\leveldb/MANIFEST-000001
+2026/06/11-09:40:56.724 8bb0 Recovering log #15
+2026/06/11-09:40:56.725 8bb0 Reusing old log C:\Users\sabin\AppData\Roaming\pruebaproyecto\Local Storage\leveldb/000015.log 
+2026/06/11-09:42:11.747 5a04 Level-0 table #19: started
+2026/06/11-09:42:11.758 5a04 Level-0 table #19: 25773 bytes OK
+2026/06/11-09:42:11.761 5a04 Delete type=0 #15
+2026/06/11-16:56:57.082 5a04 Level-0 table #21: started
+2026/06/11-16:56:57.091 5a04 Level-0 table #21: 24946 bytes OK
+2026/06/11-16:56:57.094 5a04 Delete type=0 #18
