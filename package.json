@@ -15,6 +15,7 @@
     "productName": "Calorie Tracker",
     "files": [
       "main.js",
+      "preload.js",
       "calorie_tracker.html",
       "build/icon.ico"
     ],

@@ -1,0 +1,11 @@
+name = "calorie-tracker-telegram"
+main = "src/index.js"
+compatibility_date = "2026-06-11"
+
+[vars]
+TIME_ZONE = "Europe/Madrid"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "calorie-tracker-telegram"
+database_id = "REEMPLAZAR_CON_DATABASE_ID"

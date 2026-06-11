@@ -3,3 +3,5 @@ dist/
 *.log
 .DS_Store
 Thumbs.db
+telegram-worker/wrangler.toml
+telegram-worker/.wrangler/

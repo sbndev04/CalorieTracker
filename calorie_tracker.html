@@ -18,7 +18,7 @@ button{cursor:pointer}
 .topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:18px}
 h1{font-size:24px;font-weight:700;letter-spacing:0;color:var(--text)}
 .profile-pill{font-size:13px;color:var(--soft);background:var(--chip);border:1px solid var(--line);border-radius:999px;padding:7px 12px;white-space:nowrap}
-.tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px}
+.tabs{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:16px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px}
 .tab{border:0;border-radius:6px;background:transparent;color:var(--muted);padding:10px 8px;font-weight:650}
 .tab.active{background:var(--accent);color:#05100d}
 .section{display:none}.section.active{display:block}
@@ -98,6 +98,10 @@ input:disabled{opacity:.55;cursor:not-allowed}
 .cell.habit-done{border-color:rgba(109,213,140,.55);background:rgba(109,213,140,.06)}
 .summary-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px}
 .no-profile{text-align:center;color:var(--muted);padding:34px 12px;background:var(--panel);border:1px solid var(--line);border-radius:8px}
+.sync-status{border:1px solid var(--line);border-radius:6px;background:var(--panel-2);padding:10px 12px;color:var(--muted);font-size:13px;line-height:1.4}
+.sync-status.ok{border-color:rgba(49,208,170,.55);color:#cff9ef}
+.sync-status.error{border-color:rgba(240,106,106,.6);color:#ffd0d0}
+.code-example{margin-top:8px;padding:10px 12px;border:1px solid var(--line);border-radius:6px;background:#0d1216;color:var(--soft);font:12px/1.55 Consolas,monospace;white-space:pre-wrap}
 @media(max-width:780px){
   body{padding:12px}.topbar{align-items:flex-start;flex-direction:column}.grid-2,.form-grid,.hero-stats,.summary-grid{grid-template-columns:1fr}
   .entry-form,.recipe-form{grid-template-columns:1fr}.macro-grid,.obj-btns{grid-template-columns:1fr}
@@ -119,6 +123,7 @@ input:disabled{opacity:.55;cursor:not-allowed}
     <button class="tab" onclick="showTab('registro')">Registro</button>
     <button class="tab" onclick="showTab('habito')">H&aacute;bito</button>
     <button class="tab" onclick="showTab('calendario')">Calendario</button>
+    <button class="tab" onclick="showTab('telegram')">Telegram</button>
   </div>
 
   <div id="message" class="msg"></div>
@@ -287,6 +292,47 @@ input:disabled{opacity:.55;cursor:not-allowed}
       </div>
     </div>
   </div>
+
+  <div id="telegram" class="section">
+    <div class="card">
+      <h2>Conexi&oacute;n con Telegram</h2>
+      <p class="subtle" style="margin-bottom:12px">La aplicaci&oacute;n enviar&aacute; las recetas del perfil activo y recoger&aacute; los registros pendientes del bot.</p>
+      <div class="form-grid">
+        <div class="field full">
+          <label>URL del servicio</label>
+          <input type="url" id="telegram-endpoint" placeholder="https://calorie-telegram.tu-cuenta.workers.dev"/>
+        </div>
+        <div class="field full">
+          <label>Token de sincronizaci&oacute;n</label>
+          <input type="password" id="telegram-token" placeholder="Dejar vac&iacute;o para conservar el token guardado"/>
+          <div class="hint">Se cifra con la protecci&oacute;n de credenciales de Windows y no se guarda en localStorage.</div>
+        </div>
+      </div>
+      <div class="row wrap" style="margin-top:12px">
+        <button class="btn primary" onclick="saveTelegramSettings()">Guardar conexi&oacute;n</button>
+        <button class="btn blue" id="telegram-sync-btn" onclick="syncTelegram()">Sincronizar ahora</button>
+      </div>
+      <div id="telegram-status" class="sync-status" style="margin-top:12px">Conexi&oacute;n sin configurar.</div>
+    </div>
+
+    <div class="card">
+      <h2>Formatos del bot</h2>
+      <p class="subtle">Una cantidad incluye unidad. Un factor puede escribirse como fracci&oacute;n, decimal con x o porcentaje.</p>
+      <div class="code-example">/tomar 150 g | Tortilla de patata | Cena | 21:30
+/tomar 1/2 | Tortilla de patata | Cena | 21:30
+/tomar 0.5x | Tortilla de patata
+/tomar 50% | Tortilla de patata</div>
+      <div class="code-example">/comida
+Nombre: Arroz con pollo
+Tipo: Comida
+Porci&oacute;n: 1
+Hora: 14:30
+Calor&iacute;as: 650
+Prote&iacute;na: 45
+Carbos: 70
+Grasa: 18</div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -326,6 +372,8 @@ function syncMacroGoalInputs(){
 function normalizeStore(store){
   store=store&&typeof store==='object'?store:{profiles:{},active:null};
   store.profiles=store.profiles||{};
+  store.telegramSync=store.telegramSync&&typeof store.telegramSync==='object'?store.telegramSync:{processedEventIds:[]};
+  store.telegramSync.processedEventIds=Array.isArray(store.telegramSync.processedEventIds)?store.telegramSync.processedEventIds:[];
   Object.keys(store.profiles).forEach(id=>{
     const p=store.profiles[id];
     p.name=p.name||'Perfil';
@@ -338,7 +386,7 @@ function normalizeStore(store){
         p.calData[k]=v>0?[{id:uid('legacy'),name:'Registro importado',kcal:v,protein:0,carbs:0,fat:0,time:'',mealType:'Otro',portion:1}]:[];
       }else if(!Array.isArray(v)){p.calData[k]=[];}
     });
-    p.recipes=p.recipes.map(r=>({id:r.id||uid('r'),name:r.name||'Receta',kcal:+r.kcal||0,serving:+(r.serving||r.servingAmount||1)||1,unit:r.unit||'porci\u00f3n',protein:+r.protein||0,carbs:+r.carbs||0,fat:+r.fat||0}));
+    p.recipes=p.recipes.map(r=>({id:r.id||uid('r'),name:r.name||'Receta',kcal:+r.kcal||0,serving:+(r.serving||r.servingAmount||1)||1,unit:r.unit||'porci\u00f3n',protein:+r.protein||0,carbs:+r.carbs||0,fat:+r.fat||0,revision:+r.revision||1,updatedAt:r.updatedAt||null}));
   });
   return store;
 }
@@ -351,6 +399,114 @@ function getMacroGoals(){const p=getActiveProfile(), d=p&&p.data?p.data:{};retur
 function getEntries(key=selectedDate()){const p=getActiveProfile();return p?(p.calData&&p.calData[key]||[]):[];}
 function dayTotals(key=selectedDate()){
   return getEntries(key).reduce((a,e)=>({kcal:a.kcal+(+e.kcal||0),protein:a.protein+(+e.protein||0),carbs:a.carbs+(+e.carbs||0),fat:a.fat+(+e.fat||0)}),{kcal:0,protein:0,carbs:0,fat:0});
+}
+
+let telegramSyncRunning=false, telegramSyncTimer=null, telegramConfigured=false;
+function setTelegramStatus(text,type=''){
+  const el=document.getElementById('telegram-status');
+  if(!el)return;
+  el.textContent=text;
+  el.className='sync-status'+(type?' '+type:'');
+}
+function telegramCatalog(){
+  const p=getActiveProfile();
+  return (p&&p.recipes||[]).map(r=>({
+    id:r.id,name:r.name,kcal:+r.kcal||0,serving:+r.serving||1,unit:r.unit||'porci\u00f3n',
+    protein:+r.protein||0,carbs:+r.carbs||0,fat:+r.fat||0,revision:+r.revision||1,updatedAt:r.updatedAt||null
+  }));
+}
+function validDateKey(value){return /^\d{4}-\d{2}-\d{2}$/.test(String(value||''))?value:todayKey();}
+function importTelegramEvents(events){
+  if(!activeProfileId)throw new Error('No hay un perfil activo para recibir los registros.');
+  const store=loadStore(), profile=store.profiles[activeProfileId];
+  if(!profile)throw new Error('El perfil activo ya no existe.');
+  const processed=new Set(store.telegramSync.processedEventIds||[]), accepted=[], rejected=[];
+  (Array.isArray(events)?events:[]).forEach(event=>{
+    const eventId=String(event&&event.id||'');
+    if(!eventId){rejected.push('Evento sin identificador');return;}
+    if(processed.has(eventId)){accepted.push(eventId);return;}
+    const payload=event.payload&&typeof event.payload==='object'?event.payload:{};
+    if(event.type==='meal'){
+      const name=String(payload.name||'').trim(), kcal=+payload.kcal||0;
+      if(!name||kcal<=0){rejected.push(eventId);return;}
+      const key=validDateKey(payload.localDate||event.localDate);
+      profile.calData[key]=profile.calData[key]||[];
+      profile.calData[key].push({
+        id:uid('tg'),source:'telegram',sourceEventId:eventId,
+        name,kcal:Math.round(kcal),protein:+payload.protein||0,carbs:+payload.carbs||0,fat:+payload.fat||0,
+        time:String(payload.localTime||payload.time||''),mealType:String(payload.mealType||'Otro'),
+        portion:+payload.portion||1,portionUnit:String(payload.portionUnit||''),
+        recipeId:payload.recipeId||null,recipeRevision:+payload.recipeRevision||null,
+        amountMode:payload.amountMode||null,amountValue:+payload.amountValue||null,amountUnit:payload.amountUnit||null
+      });
+    }else if(event.type==='habit'&&payload.habit==='creatine'){
+      profile.habitData[validDateKey(payload.localDate||event.localDate)]=true;
+    }else{
+      rejected.push(eventId);return;
+    }
+    processed.add(eventId);accepted.push(eventId);
+  });
+  store.telegramSync.processedEventIds=Array.from(processed).slice(-5000);
+  saveStore(store);
+  const verified=new Set(loadStore().telegramSync.processedEventIds||[]);
+  return {accepted:accepted.filter(id=>verified.has(id)),rejected};
+}
+async function loadTelegramSettings(){
+  if(!window.telegramSync){setTelegramStatus('La integraci\u00f3n requiere ejecutar la aplicaci\u00f3n de escritorio.','error');return false;}
+  try{
+    const settings=await window.telegramSync.getSettings();
+    telegramConfigured=!!settings.configured;
+    document.getElementById('telegram-endpoint').value=settings.endpoint||'';
+    setTelegramStatus(settings.configured?'Conexi\u00f3n configurada. Pendiente de sincronizar.':'Conexi\u00f3n sin configurar.',settings.configured?'ok':'');
+    return !!settings.configured;
+  }catch(error){setTelegramStatus(error.message||'No se pudo leer la configuraci\u00f3n.','error');return false;}
+}
+async function saveTelegramSettings(){
+  try{
+    await window.telegramSync.saveSettings({
+      endpoint:document.getElementById('telegram-endpoint').value,
+      token:document.getElementById('telegram-token').value
+    });
+    telegramConfigured=true;
+    document.getElementById('telegram-token').value='';
+    setTelegramStatus('Conexi\u00f3n guardada. Sincronizando...','ok');
+    await syncTelegram();
+  }catch(error){setTelegramStatus(error.message||'No se pudo guardar la conexi\u00f3n.','error');}
+}
+async function syncTelegram(options={}){
+  if(telegramSyncRunning||!window.telegramSync)return;
+  if(!telegramConfigured){
+    if(!options.silent)setTelegramStatus('Configura primero la URL y el token de sincronizaci\u00f3n.','error');
+    return;
+  }
+  if(!activeProfileId){
+    if(!options.silent)setTelegramStatus('Selecciona el perfil activo antes de sincronizar.','error');
+    return;
+  }
+  telegramSyncRunning=true;
+  const button=document.getElementById('telegram-sync-btn');
+  if(button)button.disabled=true;
+  if(!options.silent)setTelegramStatus('Sincronizando recetas y registros...');
+  try{
+    await window.telegramSync.syncCatalog(telegramCatalog());
+    const result=await window.telegramSync.pullEvents();
+    const imported=importTelegramEvents(result.events||[]);
+    if(imported.accepted.length)await window.telegramSync.ackEvents(imported.accepted);
+    renderAll();
+    const detail=imported.accepted.length?`${imported.accepted.length} registro(s) procesado(s).`:'No hab\u00eda registros pendientes.';
+    setTelegramStatus(`Sincronizaci\u00f3n completada. ${detail}`,'ok');
+    if(imported.rejected.length)setTelegramStatus(`Sincronizaci\u00f3n parcial: ${imported.rejected.length} evento(s) no eran v\u00e1lidos.`,'error');
+  }catch(error){
+    setTelegramStatus(error.message||'No se pudo sincronizar con Telegram.','error');
+    if(!options.silent)showMsg(error.message||'No se pudo sincronizar con Telegram.');
+  }finally{
+    telegramSyncRunning=false;
+    if(button)button.disabled=false;
+  }
+}
+function queueTelegramSync(){
+  clearTimeout(telegramSyncTimer);
+  telegramSyncTimer=setTimeout(()=>syncTelegram({silent:true}),1000);
 }
 
 function renderProfileList(){
@@ -388,6 +544,7 @@ function selectProfile(id){
   if(d.goal){document.getElementById('result-box').style.display='block';document.getElementById('kcal-result').textContent=d.goal;document.getElementById('kcal-detail').textContent=`Mantenimiento: ${d.tdee} kcal`;}
   else document.getElementById('result-box').style.display='none';
   renderAll();
+  queueTelegramSync();
 }
 function createProfile(){
   const name=document.getElementById('new-profile-name').value.trim();
@@ -489,8 +646,9 @@ function saveEntry(){
   const name=document.getElementById('entry-name').value.trim(), kcal=num(document.getElementById('entry-kcal').value);
   if(!name){showMsg('Escribe un nombre para la comida.');return;}
   if(kcal<=0){showMsg('Introduce calorias validas.');return;}
-  const entry={id:editingEntryId||uid('e'),name,kcal:Math.round(kcal),protein:num(document.getElementById('entry-protein').value),carbs:num(document.getElementById('entry-carbs').value),fat:num(document.getElementById('entry-fat').value),time:document.getElementById('entry-time').value,mealType:document.getElementById('meal-type').value,portion:num(document.getElementById('entry-portion').value)||1};
   const key=selectedDate(), store=loadStore(), arr=store.profiles[activeProfileId].calData[key]||[];
+  const previous=editingEntryId?arr.find(item=>item.id===editingEntryId):null;
+  const entry={...(previous||{}),id:editingEntryId||uid('e'),name,kcal:Math.round(kcal),protein:num(document.getElementById('entry-protein').value),carbs:num(document.getElementById('entry-carbs').value),fat:num(document.getElementById('entry-fat').value),time:document.getElementById('entry-time').value,mealType:document.getElementById('meal-type').value,portion:num(document.getElementById('entry-portion').value)||1};
   const wasEditing=!!editingEntryId;
   if(editingEntryId){const i=arr.findIndex(x=>x.id===editingEntryId); if(i>=0)arr[i]=entry;} else arr.push(entry);
   store.profiles[activeProfileId].calData[key]=arr; saveStore(store);
@@ -515,7 +673,7 @@ function resetDay(){
 function renderHistory(){
   const el=document.getElementById('history-list'), entries=getEntries().slice().sort((a,b)=>(a.time||'99').localeCompare(b.time||'99'));
   if(!entries.length){el.innerHTML='<div class="subtle">No hay comidas registradas en esta fecha.</div>';return;}
-  el.innerHTML=entries.map(e=>`<div class="entry-item"><div><div class="entry-title">${esc(e.name)} <span class="subtle">(${esc(e.mealType||'Otro')})</span></div><div class="entry-meta">${e.time?esc(e.time)+' | ':''}${e.kcal} kcal | P ${round(e.protein||0)}g / C ${round(e.carbs||0)}g / G ${round(e.fat||0)}g</div></div><div class="actions"><button class="btn small" onclick="editEntry('${e.id}')">Editar</button><button class="btn danger small" onclick="deleteEntry('${e.id}')">x</button></div></div>`).join('');
+  el.innerHTML=entries.map(e=>`<div class="entry-item"><div><div class="entry-title">${esc(e.name)} <span class="subtle">(${esc(e.mealType||'Otro')})</span></div><div class="entry-meta">${e.time?esc(e.time)+' | ':''}${round(e.portion||1)} ${esc(e.portionUnit||'porci\u00f3n')} | ${e.kcal} kcal | P ${round(e.protein||0)}g / C ${round(e.carbs||0)}g / G ${round(e.fat||0)}g</div></div><div class="actions"><button class="btn small" onclick="editEntry('${e.id}')">Editar</button><button class="btn danger small" onclick="deleteEntry('${e.id}')">x</button></div></div>`).join('');
 }
 
 function clearRecipeForm(){editingRecipeId=null;['r-name','r-kcal','r-serving','r-unit','r-protein','r-carbs','r-fat'].forEach(id=>document.getElementById(id).value='');document.getElementById('recipe-save-btn').textContent='+ Guardar';}
@@ -526,9 +684,10 @@ function saveRecipe(){
   if(kcal<=0){showMsg('Introduce calorias validas para la receta.');return;}
   const store=loadStore(), recipes=store.profiles[activeProfileId].recipes||[];
   if(recipes.some(r=>r.name.toLowerCase()===name.toLowerCase()&&r.id!==editingRecipeId)){showMsg('Ya existe una receta con ese nombre.');return;}
-  const recipe={id:editingRecipeId||uid('r'),name,kcal:Math.round(kcal),serving,unit,protein:num(document.getElementById('r-protein').value),carbs:num(document.getElementById('r-carbs').value),fat:num(document.getElementById('r-fat').value)};
+  const previous=editingRecipeId?recipes.find(r=>r.id===editingRecipeId):null;
+  const recipe={id:editingRecipeId||uid('r'),name,kcal:Math.round(kcal),serving,unit,protein:num(document.getElementById('r-protein').value),carbs:num(document.getElementById('r-carbs').value),fat:num(document.getElementById('r-fat').value),revision:previous?(+previous.revision||1)+1:1,updatedAt:new Date().toISOString()};
   if(editingRecipeId){const i=recipes.findIndex(r=>r.id===editingRecipeId); if(i>=0)recipes[i]=recipe;} else recipes.push(recipe);
-  store.profiles[activeProfileId].recipes=recipes; saveStore(store); clearRecipeForm(); renderRecipes(); showMsg('Receta guardada.','ok');
+  store.profiles[activeProfileId].recipes=recipes; saveStore(store); clearRecipeForm(); renderRecipes(); queueTelegramSync(); showMsg('Receta guardada.','ok');
 }
 function editRecipe(id){
   const p=getActiveProfile(), r=p.recipes.find(x=>x.id===id); if(!r)return;
@@ -537,6 +696,7 @@ function editRecipe(id){
 }
 function deleteRecipe(id){
   const store=loadStore(); store.profiles[activeProfileId].recipes=(store.profiles[activeProfileId].recipes||[]).filter(r=>r.id!==id); saveStore(store); renderRecipes();
+  queueTelegramSync();
 }
 function useRecipe(id){const p=getActiveProfile(), r=p.recipes.find(x=>x.id===id); if(r)fillEntryFromRecipe(r);}
 function renderRecipes(){
@@ -628,9 +788,9 @@ function renderCal(){
   document.getElementById('cal-container').innerHTML=html;
 }
 function showTab(t){
-  document.querySelectorAll('.tab').forEach((b,i)=>b.classList.toggle('active',['perfil','registro','habito','calendario'][i]===t));
+  document.querySelectorAll('.tab').forEach((b,i)=>b.classList.toggle('active',['perfil','registro','habito','calendario','telegram'][i]===t));
   document.querySelectorAll('.section').forEach(s=>s.classList.remove('active')); document.getElementById(t).classList.add('active');
-  if(t==='registro'){updateRegistro();renderHistory();renderRecipes();} if(t==='habito')renderHabit(); if(t==='calendario')renderCal();
+  if(t==='registro'){updateRegistro();renderHistory();renderRecipes();} if(t==='habito')renderHabit(); if(t==='calendario')renderCal(); if(t==='telegram')loadTelegramSettings();
 }
 function renderAll(){renderProfileList();updateRegistro();renderHistory();renderRecipes();renderHabit();renderCal();}
 document.addEventListener('click',e=>{if(!e.target.closest('.input-wrap'))document.getElementById('ac-list').style.display='none';});
@@ -646,6 +806,8 @@ document.addEventListener('click',e=>{if(!e.target.closest('.input-wrap'))docume
   updateMacroHints();
   const store=loadStore();
   if(store.active&&store.profiles[store.active])selectProfile(store.active); else renderAll();
+  loadTelegramSettings().then(configured=>{if(configured)setTimeout(()=>syncTelegram({silent:true}),500);});
+  setInterval(()=>syncTelegram({silent:true}),5*60*1000);
 })();
 </script>
 </body>
