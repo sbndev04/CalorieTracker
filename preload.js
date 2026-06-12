@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('telegramSync', {
   syncCatalog: recipes => ipcRenderer.invoke('telegram:sync-catalog', {
     recipes: Array.isArray(recipes) ? recipes : []
   }),
+  syncDailyStatus: status => ipcRenderer.invoke('telegram:sync-daily-status', status || {}),
   pullEvents: () => ipcRenderer.invoke('telegram:pull-events'),
   ackEvents: ids => ipcRenderer.invoke('telegram:ack-events', Array.isArray(ids) ? ids : [])
 });

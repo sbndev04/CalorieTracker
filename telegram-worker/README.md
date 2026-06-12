@@ -50,13 +50,19 @@ En la aplicación, introduce la URL base del Worker y el mismo `APP_SYNC_TOKEN`.
 ## Comandos
 
 ```text
-/tomar 150 g | Tortilla de patata | Cena | 21:30
-/tomar 1/2 | Tortilla de patata
-/tomar 0.5x | Tortilla de patata
-/tomar 50% | Tortilla de patata
+/comida, muslito, 650, 25, 0, 9
+/tomar, tortilla de patata, 1/2
+/tomar, tortilla de patata, 150 g
+/tomar, tortilla de patata, 0.5x, cena, 21:30
+/objetivos
 /recetas
 /creatina
 ```
 
-Las cantidades deben incluir unidad. Los números sin unidad, las fracciones, los
-porcentajes y los valores terminados en `x` se interpretan como factores.
+En `/comida`, los numeros representan calorias, proteina, carbos y grasa, en ese
+orden. El tipo sera `Otro`, la porcion sera `1` y se usara la hora actual.
+
+En `/tomar`, escribe primero el nombre de la receta y despues la cantidad o
+factor. Las cantidades deben incluir unidad. Los numeros sin unidad, las
+fracciones, los porcentajes y los valores terminados en `x` se interpretan como
+factores. El tipo y la hora son opcionales.

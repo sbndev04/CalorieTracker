@@ -99,6 +99,9 @@ function registerTelegramIpc() {
     const recipes = Array.isArray(catalog?.recipes) ? catalog.recipes : [];
     return serviceRequest('/api/catalog', { method: 'PUT', body: { recipes } });
   });
+  ipcMain.handle('telegram:sync-daily-status', (_event, status) => {
+    return serviceRequest('/api/daily-status', { method: 'PUT', body: status || {} });
+  });
   ipcMain.handle('telegram:pull-events', () => serviceRequest('/api/events'));
   ipcMain.handle('telegram:ack-events', (_event, ids) => {
     const eventIds = Array.isArray(ids) ? ids.filter(id => typeof id === 'string').slice(0, 100) : [];

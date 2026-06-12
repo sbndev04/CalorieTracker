@@ -318,19 +318,11 @@ input:disabled{opacity:.55;cursor:not-allowed}
     <div class="card">
       <h2>Formatos del bot</h2>
       <p class="subtle">Una cantidad incluye unidad. Un factor puede escribirse como fracci&oacute;n, decimal con x o porcentaje.</p>
-      <div class="code-example">/tomar 150 g | Tortilla de patata | Cena | 21:30
-/tomar 1/2 | Tortilla de patata | Cena | 21:30
-/tomar 0.5x | Tortilla de patata
-/tomar 50% | Tortilla de patata</div>
-      <div class="code-example">/comida
-Nombre: Arroz con pollo
-Tipo: Comida
-Porci&oacute;n: 1
-Hora: 14:30
-Calor&iacute;as: 650
-Prote&iacute;na: 45
-Carbos: 70
-Grasa: 18</div>
+      <div class="code-example">/tomar, tortilla de patata, 1/2
+/tomar, tortilla de patata, 150 g
+/tomar, tortilla de patata, 0.5x, cena, 21:30</div>
+      <div class="code-example">/comida, muslito, 650, 25, 0, 9</div>
+      <p class="subtle" style="margin-top:8px">En comida: nombre, calor&iacute;as, prote&iacute;na, carbos y grasa.</p>
     </div>
   </div>
 </div>
@@ -415,6 +407,16 @@ function telegramCatalog(){
     protein:+r.protein||0,carbs:+r.carbs||0,fat:+r.fat||0,revision:+r.revision||1,updatedAt:r.updatedAt||null
   }));
 }
+function telegramDailyStatus(){
+  const store=loadStore(), totals=dayTotals(todayKey()), goals=getMacroGoals(), now=new Date();
+  return {
+    localDate:todayKey(),
+    localTime:`${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`,
+    goals:{kcal:+getDailyGoal()||0,protein:+goals.protein||0,carbs:+goals.carbs||0,fat:+goals.fat||0},
+    totals:{kcal:+totals.kcal||0,protein:+totals.protein||0,carbs:+totals.carbs||0,fat:+totals.fat||0},
+    includedEventIds:(store.telegramSync.processedEventIds||[]).slice(-5000)
+  };
+}
 function validDateKey(value){return /^\d{4}-\d{2}-\d{2}$/.test(String(value||''))?value:todayKey();}
 function importTelegramEvents(events){
   if(!activeProfileId)throw new Error('No hay un perfil activo para recibir los registros.');
@@ -491,6 +493,7 @@ async function syncTelegram(options={}){
     await window.telegramSync.syncCatalog(telegramCatalog());
     const result=await window.telegramSync.pullEvents();
     const imported=importTelegramEvents(result.events||[]);
+    await window.telegramSync.syncDailyStatus(telegramDailyStatus());
     if(imported.accepted.length)await window.telegramSync.ackEvents(imported.accepted);
     renderAll();
     const detail=imported.accepted.length?`${imported.accepted.length} registro(s) procesado(s).`:'No hab\u00eda registros pendientes.';
@@ -584,7 +587,7 @@ function calcular(){
   document.getElementById('kcal-result').textContent=goal;
   const label=manualGoal?'Objetivo manual':objetivo==='mantener'?'Mantenimiento':`${objetivo==='bajar'?'Deficit':'Superavit'} ${adjust} kcal`;
   document.getElementById('kcal-detail').textContent=`Mantenimiento: ${tdee} kcal | ${label}`;
-  renderAll(); showMsg('Objetivo guardado.','ok');
+  renderAll(); queueTelegramSync(); showMsg('Objetivo guardado.','ok');
 }
 
 function onDateChange(){editingEntryId=null;clearEntryForm(false);setDefaultEntryTime();updateRegistro();renderHistory();}
@@ -652,7 +655,7 @@ function saveEntry(){
   const wasEditing=!!editingEntryId;
   if(editingEntryId){const i=arr.findIndex(x=>x.id===editingEntryId); if(i>=0)arr[i]=entry;} else arr.push(entry);
   store.profiles[activeProfileId].calData[key]=arr; saveStore(store);
-  clearEntryForm(); setDefaultEntryTime(); renderAll(); showMsg(wasEditing?'Entrada actualizada.':'Comida a\u00f1adida.','ok');
+  clearEntryForm(); setDefaultEntryTime(); renderAll(); queueTelegramSync(); showMsg(wasEditing?'Entrada actualizada.':'Comida a\u00f1adida.','ok');
 }
 function editEntry(id){
   const e=getEntries().find(x=>x.id===id); if(!e)return;
@@ -664,11 +667,11 @@ function editEntry(id){
 function deleteEntry(id){
   const key=selectedDate(), store=loadStore();
   store.profiles[activeProfileId].calData[key]=(store.profiles[activeProfileId].calData[key]||[]).filter(e=>e.id!==id);
-  saveStore(store); renderAll();
+  saveStore(store); renderAll(); queueTelegramSync();
 }
 function resetDay(){
   if(!activeProfileId||!confirm('Reiniciar el registro de este dia?'))return;
-  const store=loadStore(); store.profiles[activeProfileId].calData[selectedDate()]=[]; saveStore(store); clearEntryForm(); renderAll();
+  const store=loadStore(); store.profiles[activeProfileId].calData[selectedDate()]=[]; saveStore(store); clearEntryForm(); renderAll(); queueTelegramSync();
 }
 function renderHistory(){
   const el=document.getElementById('history-list'), entries=getEntries().slice().sort((a,b)=>(a.time||'99').localeCompare(b.time||'99'));

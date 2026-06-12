@@ -43,3 +43,9 @@ CREATE TABLE IF NOT EXISTS events (
 
 CREATE INDEX IF NOT EXISTS events_status_created
 ON events(status, created_at);
+
+CREATE TABLE IF NOT EXISTS daily_status (
+  local_date TEXT PRIMARY KEY,
+  snapshot_json TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);

@@ -150,8 +150,16 @@ export function buildRecipePayload(recipe, amount, options = {}) {
 }
 
 function splitTakeCommand(text) {
-  const body = String(text).replace(/^\/tomar(?:@\w+)?\s*/i, '').trim();
-  if (!body) throw new Error('Ejemplo: /tomar 150 g | Tortilla | Cena | 21:30');
+  const body = String(text).replace(/^\/tomar(?:@\w+)?/i, '').trim();
+  if (!body) throw new Error('Ejemplo: /tomar, tortilla de patata, 1/2');
+  if (body.startsWith(',')) {
+    const fields = body.slice(1).split(',').map(value => value.trim());
+    if (fields.length < 2 || fields.length > 4 || !fields[0] || !fields[1]) {
+      throw new Error('Usa: /tomar, receta, cantidad, tipo opcional, hora opcional');
+    }
+    const [recipe, amount, mealType = '', localTime = ''] = fields;
+    return { amount, recipe, mealType, localTime };
+  }
   if (body.includes('|')) {
     const [amount, recipe, mealType, localTime] = body.split('|').map(value => value.trim());
     if (!amount || !recipe) throw new Error('Indica cantidad o factor y nombre de receta.');
@@ -183,7 +191,31 @@ function parsePortion(value) {
 }
 
 export function parseManualMeal(text, clock) {
-  const body = String(text).replace(/^\/comida(?:@\w+)?\s*/i, '');
+  const body = String(text).replace(/^\/comida(?:@\w+)?/i, '').trim();
+  if (body.startsWith(',')) {
+    const fields = body.slice(1).split(',').map(value => value.trim());
+    if (fields.length !== 5 || fields.some(value => value === '')) {
+      throw new Error('Usa: /comida, nombre, calorias, proteina, carbos, grasa');
+    }
+    const [name, kcal, protein, carbs, fat] = fields;
+    return {
+      name,
+      mealType: 'Otro',
+      portion: 1,
+      portionUnit: '',
+      kcal: Math.round(numberValue(kcal)),
+      protein: nonNegativeValue(protein),
+      carbs: nonNegativeValue(carbs),
+      fat: nonNegativeValue(fat),
+      localDate: clock.localDate,
+      localTime: clock.localTime,
+      recipeId: null,
+      recipeRevision: null,
+      amountMode: null,
+      amountValue: null,
+      amountUnit: null
+    };
+  }
   const fields = {};
   body.split(/\r?\n/).forEach(line => {
     const separator = line.indexOf(':');
@@ -273,6 +305,69 @@ async function listRecipes(env, chatId) {
   await telegram(env, 'sendMessage', { chat_id: chatId, text });
 }
 
+function progressLine(label, value, goal, unit) {
+  const current = round(Number(value || 0));
+  const target = round(Number(goal || 0));
+  return target > 0
+    ? `${label}: ${current}/${target}${unit ? ` ${unit}` : ''}`
+    : `${label}: ${current}${unit ? ` ${unit}` : ''} (sin objetivo)`;
+}
+
+export function buildObjectivesSummary(snapshot, pendingEvents = []) {
+  const totals = {
+    kcal: Number(snapshot?.totals?.kcal || 0),
+    protein: Number(snapshot?.totals?.protein || 0),
+    carbs: Number(snapshot?.totals?.carbs || 0),
+    fat: Number(snapshot?.totals?.fat || 0)
+  };
+  const included = new Set(Array.isArray(snapshot?.includedEventIds) ? snapshot.includedEventIds : []);
+  let pendingCount = 0;
+  pendingEvents.forEach(event => {
+    const payload = event?.payload || {};
+    if (!event?.id || included.has(event.id) || payload.localDate !== snapshot.localDate) return;
+    totals.kcal += Number(payload.kcal || 0);
+    totals.protein += Number(payload.protein || 0);
+    totals.carbs += Number(payload.carbs || 0);
+    totals.fat += Number(payload.fat || 0);
+    pendingCount++;
+  });
+  const goals = snapshot?.goals || {};
+  const lines = [
+    `Objetivos de hoy (${snapshot.localDate})`,
+    '',
+    progressLine('Calorias', totals.kcal, goals.kcal, 'kcal'),
+    progressLine('Prote', totals.protein, goals.protein, 'g'),
+    progressLine('Carbos', totals.carbs, goals.carbs, 'g'),
+    progressLine('Grasa', totals.fat, goals.fat, 'g'),
+    '',
+    `Ultima sincronizacion: ${snapshot.localTime || 'sin hora'}`
+  ];
+  if (pendingCount) lines.push(`Incluye ${pendingCount} registro(s) pendiente(s) de importar.`);
+  return { text: lines.join('\n'), totals, pendingCount };
+}
+
+async function sendObjectives(env, chatId, clock) {
+  const row = await env.DB.prepare(
+    'SELECT snapshot_json FROM daily_status WHERE local_date = ?'
+  ).bind(clock.localDate).first();
+  if (!row) {
+    await telegram(env, 'sendMessage', {
+      chat_id: chatId,
+      text: 'Todavia no tengo los objetivos de hoy. Abre la aplicacion y sincroniza Telegram.'
+    });
+    return;
+  }
+  const pending = await env.DB.prepare(
+    "SELECT id, payload_json FROM events WHERE status = 'pending' AND type = 'meal'"
+  ).all();
+  const events = (pending.results || []).map(event => ({
+    id: event.id,
+    payload: JSON.parse(event.payload_json)
+  }));
+  const summary = buildObjectivesSummary(JSON.parse(row.snapshot_json), events);
+  await telegram(env, 'sendMessage', { chat_id: chatId, text: summary.text });
+}
+
 async function processMessage(env, update) {
   const message = update.message;
   const text = String(message.text || '').trim();
@@ -281,12 +376,16 @@ async function processMessage(env, update) {
   if (/^\/(?:start|ayuda)(?:@\w+)?\b/i.test(text)) {
     await telegram(env, 'sendMessage', {
       chat_id: chatId,
-      text: 'Comandos:\n/tomar 150 g | Receta | Cena | 21:30\n/tomar 1/2 | Receta\n/comida seguido de los campos del formulario\n/recetas\n/creatina'
+      text: 'Comandos:\n/comida, muslito, 650, 25, 0, 9\n/tomar, tortilla de patata, 1/2\n/tomar, tortilla de patata, 150 g\n/objetivos\n/recetas\n/creatina'
     });
     return;
   }
   if (/^\/recetas(?:@\w+)?\b/i.test(text)) {
     await listRecipes(env, chatId);
+    return;
+  }
+  if (/^\/objetivos(?:@\w+)?\b/i.test(text)) {
+    await sendObjectives(env, chatId, clock);
     return;
   }
   try {
@@ -434,6 +533,47 @@ async function replaceCatalog(request, env) {
   return json({ ok: true, recipes: recipes.length });
 }
 
+function validMetricGroup(value) {
+  const source = value && typeof value === 'object' ? value : {};
+  const result = {};
+  for (const key of ['kcal', 'protein', 'carbs', 'fat']) {
+    const metric = Number(source[key] || 0);
+    if (!Number.isFinite(metric) || metric < 0) throw new Error('El estado diario contiene valores no validos.');
+    result[key] = metric;
+  }
+  return result;
+}
+
+async function replaceDailyStatus(request, env) {
+  const body = await request.json();
+  const localDate = String(body.localDate || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(localDate)) return json({ error: 'La fecha diaria no es valida.' }, 400);
+  let goals, totals;
+  try {
+    goals = validMetricGroup(body.goals);
+    totals = validMetricGroup(body.totals);
+  } catch (error) {
+    return json({ error: error.message }, 400);
+  }
+  const includedEventIds = Array.isArray(body.includedEventIds)
+    ? [...new Set(body.includedEventIds.filter(id => typeof id === 'string'))].slice(-5000)
+    : [];
+  const snapshot = {
+    localDate,
+    localTime: /^\d{2}:\d{2}$/.test(String(body.localTime || '')) ? body.localTime : '',
+    goals,
+    totals,
+    includedEventIds
+  };
+  await env.DB.prepare(
+    `INSERT INTO daily_status (local_date, snapshot_json, updated_at)
+     VALUES (?, ?, ?)
+     ON CONFLICT(local_date) DO UPDATE SET
+     snapshot_json=excluded.snapshot_json, updated_at=excluded.updated_at`
+  ).bind(localDate, JSON.stringify(snapshot), new Date().toISOString()).run();
+  return json({ ok: true });
+}
+
 async function cleanupExpired(env) {
   await env.DB.batch([
     env.DB.prepare(
@@ -444,6 +584,9 @@ async function cleanupExpired(env) {
     ),
     env.DB.prepare(
       "DELETE FROM processed_updates WHERE created_at < datetime('now', '-30 days')"
+    ),
+    env.DB.prepare(
+      "DELETE FROM daily_status WHERE local_date < date('now', '-30 days')"
     )
   ]);
 }
@@ -506,6 +649,7 @@ export default {
         return json({ error: 'No autorizado.' }, 401);
       }
       if (request.method === 'PUT' && url.pathname === '/api/catalog') return replaceCatalog(request, env);
+      if (request.method === 'PUT' && url.pathname === '/api/daily-status') return replaceDailyStatus(request, env);
       if (request.method === 'GET' && url.pathname === '/api/events') return pendingEvents(env);
       if (request.method === 'POST' && url.pathname === '/api/events/ack') {
         return acknowledgeEvents(request, env, ctx);
