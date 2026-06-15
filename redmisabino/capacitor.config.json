@@ -1,0 +1,9 @@
+{
+  "appId": "com.sabino.calorietracker",
+  "appName": "Calorie Tracker Sabino",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": false
+  }
+}
+
